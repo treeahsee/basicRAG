@@ -43,7 +43,6 @@ else:
     print(f"Index: '{index_name}' Already Exists")
 
 index = pc.Index(index_name)
-
 vector_store = PineconeVectorStore(index=index, embedding=embeddings)
 
 text_splitter = RecursiveCharacterTextSplitter(
@@ -135,8 +134,21 @@ def delete_outdated_entries():
             print(f"Deleting outdated source: {source}")
             index.delete(filter={"source": {"$eq": source}})
 
-def main(sync=False, cleanup=False):
+def delete_from_index(delete_source):
+    results = index.query(vector=[0]*3072, top_k=10000, filter={"source": {"$eq": delete_source}}, include_metadata=True)
+    ids_to_delete = [match["id"] for match in results["matches"]]
+    if ids_to_delete:
+        index.delete(ids=ids_to_delete)
+        print(f"Deleted {len(ids_to_delete)} vectors from source: {delete_source}")
+    else:
+        print("No vectors found for the specified source.") 
+
+def main(sync=False, cleanup=False, delete_source=None):
     """Main function to update the vector store."""
+    if delete_source:
+        delete_from_index(delete_source)
+        return
+
     if cleanup:
         delete_outdated_entries()
 
@@ -153,6 +165,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Update Pinecone vector store")
     parser.add_argument("--sync", action="store_true", help="Sync new and updated documents")
     parser.add_argument("--cleanup", action="store_true", help="Remove outdated documents from index")
+    parser.add_argument("--delete", type=str, help="Delete a specific PDF file or URL from the index")
     args = parser.parse_args()
 
-    main(sync=args.sync, cleanup=args.cleanup)
+    main(sync=args.sync, cleanup=args.cleanup, delete_source=args.delete)
