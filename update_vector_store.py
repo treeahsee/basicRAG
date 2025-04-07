@@ -121,18 +121,10 @@ def delete_outdated_entries():
     existing_urls = get_urls()
 
     results = index.query(vector=[0]*3072, top_k=10000, include_metadata=True)
-    
-    for match in results["matches"]:
-        source = match["metadata"].get("source")
-        if source and source not in existing_files and source not in existing_urls:
-            # ids_to_delete = [match["id"] for match in results["matches"]]
-            # if ids_to_delete:
-            #     index.delete(ids=ids_to_delete)
-            #     print(f"Deleted {len(ids_to_delete)} vectors from source: {source}")
-            # else:
-            #     print("No vectors found for the specified source.")
-            print(f"Deleting outdated source: {source}")
-            index.delete(filter={"source": {"$eq": source}})
+
+    sources = set([match["metadata"].get("source") for match in results["matches"] if match["metadata"].get("source") not in existing_files and source not in existing_urls])
+    for source in sources:
+        delete_from_index(source)
 
 def delete_from_index(delete_source):
     results = index.query(vector=[0]*3072, top_k=10000, filter={"source": {"$eq": delete_source}}, include_metadata=True)
