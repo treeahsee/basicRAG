@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 from pydantic import BaseModel
 from langchain.chat_models import init_chat_model
 from langchain_openai import OpenAIEmbeddings
@@ -12,6 +13,30 @@ from pinecone import Pinecone
 
 
 def handler(event, context):
+    # simple check
+    if event.get("path") == "/ping":
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": "pong"})
+        }
+    
+    # get body
+    try:
+        body = event["body"]
+        if event.get("isBase64Encoded"):  # API Gateway can send this if content-encoded
+            body = base64.b64decode(body).decode()
+
+        body_data = json.loads(body)
+        question = body_data.get("question")
+        if not question:
+            raise ValueError("Missing 'question' in request body")
+    except Exception as e:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": f"Invalid request: {str(e)}"}),
+        }
+    
+
     ai_key = os.getenv("OPENAI_API_KEY")
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large", api_key=ai_key)
 
@@ -39,7 +64,7 @@ def handler(event, context):
 
 
     def retrieve(state: State):
-        retrieved_docs = vector_store.similarity_search(event['body'],k=1)
+        retrieved_docs = vector_store.similarity_search(question,k=1)
         return {"context": retrieved_docs}
 
 
@@ -62,11 +87,16 @@ def handler(event, context):
         # context: List[str]
         answer: str
     
-    result = graph.invoke({"question": event['body']})
+    result = graph.invoke({"question": question})
     answer = result['answer']
     ctx_doc = set([result['context'][i].metadata['source'] for i in range(len(result['context']))])
 
     return {
-        "statusCode" : 200,
-        "body" : json.dumps({"answer": answer, "document": list(ctx_doc)}),
+        "statusCode": 200,
+        "body": json.dumps({"answer": answer, "document": list(ctx_doc)}),
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization"
+        }
     }
